@@ -9,6 +9,13 @@ module crossroad_pattern (
     input  wire [2:0] light_ns,
     input  wire [2:0] light_ew,
 
+    // 右下角 PIP 画中画：摄像头 RGB + 有效信号 + 缩放档位
+    input  wire [7:0] pip_cam_r,
+    input  wire [7:0] pip_cam_g,
+    input  wire [7:0] pip_cam_b,
+    input  wire       pip_cam_valid,
+    input  wire [1:0] pip_zoom,
+
     input  wire [3:0] ns_tens,
     input  wire [3:0] ns_ones,
     input  wire [3:0] ew_tens,
@@ -74,6 +81,11 @@ module crossroad_pattern (
     // 画面尺寸
     localparam [9:0] X_MAX = 10'd640;
     localparam [9:0] Y_MAX = 10'd480;
+
+    // 画中画配置（基于道路宽度/高度裁剪，保证不超出道路范围）
+    localparam [9:0] PIP_MARGIN = 10'd8;
+    localparam [9:0] ROAD_W     = V_ROAD_X_R - V_ROAD_X_L;  // ≈120
+    localparam [9:0] ROAD_H     = H_ROAD_Y_B - H_ROAD_Y_T;  // ≈120
 
     // 斑马线条纹参数
     localparam [9:0] STRIPE_PERIOD = 10'd12;
@@ -451,12 +463,25 @@ module crossroad_pattern (
     reg [7:0] glow_phase;
     reg [7:0] glow_lvl;
     reg [7:0] glow2;
+    reg [9:0] pip_w;
+    reg [9:0] pip_h;
+    reg [9:0] pip_x0;
+    reg [9:0] pip_y0;
+    reg [9:0] pip_x;
+    reg [9:0] pip_y;
 
     always @* begin
         // --------- 默认值：避免 latch 推断（关键）---------
         glow_phase = 8'd0;
         glow_lvl   = 8'd0;
         glow2      = 8'd0;
+
+        pip_w  = 10'd1;
+        pip_h  = 10'd1;
+        pip_x0 = X_MAX - 10'd1;
+        pip_y0 = Y_MAX - 10'd1;
+        pip_x  = 10'd0;
+        pip_y  = 10'd0;
 
         dx_i     = 0;
         dy_i     = 0;
@@ -486,6 +511,14 @@ module crossroad_pattern (
             glow_phase = tri_wave8(anim);
             glow_lvl   = (glow_phase >> 4);                 // 0..15
             glow2      = add_sat8((glow_phase >> 2), (boom_amp >> 3)); // 0..63 + boom
+
+            // 计算 PIP 尺寸/原点（以道路宽高为上限，可缩放）
+            pip_w  = (ROAD_W >> pip_zoom);
+            pip_h  = (ROAD_H >> pip_zoom);
+            if (pip_w == 10'd0) pip_w = 10'd1;
+            if (pip_h == 10'd0) pip_h = 10'd1;
+            pip_x0 = X_MAX - pip_w - PIP_MARGIN;
+            pip_y0 = Y_MAX - pip_h - PIP_MARGIN;
 
             // 1) 人行道（冷灰蓝）
             if (x >= V_ROAD_X_L - SIDEWALK_W && x < V_ROAD_X_L && y < Y_MAX) begin
@@ -832,7 +865,25 @@ module crossroad_pattern (
                 end
             end
 
-            // 8) boom feeling：冲击闪光 + 环形冲击波（最后叠加）
+            // 8) 右下角 PIP：摄像头实时画面（边框 + 有效像素）
+            pip_x = x - pip_x0;
+            pip_y = y - pip_y0;
+            if (x >= pip_x0 && x < pip_x0 + pip_w &&
+                y >= pip_y0 && y < pip_y0 + pip_h) begin
+                // 边框/遮罩（保证不超过道路范围）
+                if (x == pip_x0 || x == pip_x0 + pip_w - 1 ||
+                    y == pip_y0 || y == pip_y0 + pip_h - 1) begin
+                    r = 8'd60; g = 8'd80; b = 8'd110;
+                end else if (pip_cam_valid) begin
+                    r = pip_cam_r;
+                    g = pip_cam_g;
+                    b = pip_cam_b;
+                end else begin
+                    r = 8'd12; g = 8'd18; b = 8'd26; // 无效时淡底色
+                end
+            end
+
+            // 9) boom feeling：冲击闪光 + 环形冲击波（最后叠加）
             if (boom_amp != 8'd0) begin
                 if ((x >= V_ROAD_X_L && x < V_ROAD_X_R) ||
                     (y >= H_ROAD_Y_T && y < H_ROAD_Y_B)) begin
