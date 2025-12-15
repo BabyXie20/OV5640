@@ -20,7 +20,14 @@ module tlc_stage1_top(
     input         PS2_CLK,
     input         PS2_DAT,
     inout  [5:0]  GPIO_0,
-    inout  [5:0]  GPIO_1
+    inout  [5:0]  GPIO_1,
+
+    // 画中画摄像头输入（RGB888 + 有效 + 缩放档位）
+    input  [7:0]  pip_cam_r,
+    input  [7:0]  pip_cam_g,
+    input  [7:0]  pip_cam_b,
+    input         pip_cam_valid,
+    input  [1:0]  pip_zoom
 );
 
     //================================================
@@ -556,8 +563,14 @@ module tlc_stage1_top(
         .viol_w   (viol_w),
         .viol_e   (viol_e),
 
-        .anim     (anim),       
-		  .boom_amp (boom_amp),
+        .anim     (anim),
+        .boom_amp (boom_amp),
+
+        .pip_cam_r    (pip_cam_r),
+        .pip_cam_g    (pip_cam_g),
+        .pip_cam_b    (pip_cam_b),
+        .pip_cam_valid(pip_cam_valid),
+        .pip_zoom     (pip_zoom),
 
         .r        (r),
         .g        (g),
